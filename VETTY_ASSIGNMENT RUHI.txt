@@ -1,0 +1,159 @@
+Q1️⃣ Count of total purchases per month (excluding refunded ones)
+
+Solution : 
+SELECT
+    date_trunc('month', purchase_time) AS month,
+    COUNT(*) AS purchase_count
+FROM transactions
+WHERE refund_time IS NULL
+GROUP BY date_trunc('month', purchase_time)
+ORDER BY month;
+
+Explanation : We want to count valid (non-refunded) purchases month-wise.
+So, we filter out rows where refund_time is NOT NULL and then group by month.
+
+Q2️⃣ Stores that received 5+ transactions in Oct-2020 
+
+SQL QUERY : 
+
+SELECT COUNT(*) AS store_count
+FROM (
+    SELECT store_id
+    FROM transactions
+    WHERE purchase_time >= DATE '2020-10-01'
+      AND purchase_time <  DATE '2020-11-01'
+    GROUP BY store_id
+    HAVING COUNT(*) >= 5
+) AS t;
+
+Explanation : We first filter only October-2020 data.
+Then group by store and count their purchases.
+Finally, keep stores having 5 or more purchases.
+In our dataset, no store qualifies → result = 0 stores.
+
+Q3️⃣ Minimum time to refund per store (in minutes)
+
+Solution : 
+
+SELECT
+    store_id,
+    MIN(EXTRACT(EPOCH FROM (refund_time - purchase_time)) / 60) AS min_minutes_to_refund
+FROM transactions
+WHERE refund_time IS NOT NULL
+GROUP BY store_id;
+
+Explanation :
+For stores where refunds happened, we calculate
+refund_time − purchase_time in minutes,
+and return the minimum time for each store.
+
+Q4️⃣ First valid transaction value of each store
+
+Solution : 
+SELECT
+    store_id,
+    gross_transaction_value
+FROM (
+    SELECT
+        t.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY store_id ORDER BY purchase_time
+        ) AS rn
+    FROM transactions t
+    WHERE refund_time IS NULL
+) AS x
+WHERE rn = 1;
+
+Explanation :
+“Valid” → Not refunded.
+We find the earliest purchase timestamp for each store and pick that row.
+Returns each store’s first earning.
+
+Q5️⃣ Most popular item bought in first purchase of buyers
+
+Solution : WITH first_purchase AS (
+    SELECT *
+    FROM (
+        SELECT
+            t.*,
+            ROW_NUMBER() OVER (
+                PARTITION BY buyer_id ORDER BY purchase_time
+            ) AS rn
+        FROM transactions t
+        WHERE refund_time IS NULL
+    ) fp
+    WHERE rn = 1
+)
+SELECT
+    i.item_name
+FROM first_purchase fp
+JOIN items i
+  ON fp.store_id = i.store_id
+ AND fp.item_id  = i.item_id
+GROUP BY i.item_name
+ORDER BY COUNT(*) DESC
+LIMIT 1;
+
+Explanation : We find each buyer’s first valid (non-refunded) purchase,
+join with items table to get item_name,
+then count which product appears the most.
+Items not found in items table are ignored.
+
+Q6️⃣ Flag refunds processed within 72 hours
+
+Solution : SELECT
+    t.*,
+    CASE
+        WHEN refund_time IS NOT NULL
+             AND refund_time <= purchase_time + INTERVAL '72 hours'
+        THEN 1 ELSE 0
+    END AS refund_flag
+FROM transactions t;
+
+Explanation : 
+A refund is considered valid only if it happens within 72 hours
+(3 days) of purchase.
+We add a new column that gives:
+1 = refundable, 0 = beyond 72 hours / not refunded.
+
+Q7️⃣ Return only the second purchase for each buyer
+
+Solution : SELECT *
+FROM (
+    SELECT
+        t.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY buyer_id ORDER BY purchase_time
+        ) AS purchase_rank
+    FROM transactions t
+    WHERE refund_time IS NULL
+) x
+WHERE purchase_rank = 2;
+
+Explanation : We order each buyer’s purchases by time
+and pick the one ranked 2.
+Refunded orders are ignored as they do not count as successful purchases.
+
+Q8️⃣ Show timestamp of the second valid purchase per buyer
+ 
+Solution : SELECT
+    buyer_id,
+    purchase_time
+FROM (
+    SELECT
+        buyer_id,
+        purchase_time,
+        ROW_NUMBER() OVER (
+            PARTITION BY buyer_id ORDER BY purchase_time
+        ) AS rn
+    FROM transactions
+    WHERE refund_time IS NULL
+) x
+WHERE rn = 2;
+
+Explanation : Similar to Q7, but we only display buyer_id and the timestamp
+of the second successful purchase.
+If buyer has 1 or fewer valid purchases, they will not appear in result.
+
+
+
